@@ -34,6 +34,7 @@ LOG_FILE="/tmp/setup-$(date +%Y%m%d-%H%M%S).log"
 : "${NEXTDNS_ID:=43d323}"
 : "${SKIP_TAILSCALE_UPDATE:=no}"
 : "${SKIP_SSH_TUNNEL:=no}"
+: "${ORACLE_BACKUP_PUBKEY:=}"
 
 #############################################
 # LOGGING AND OUTPUT
@@ -636,15 +637,72 @@ generate_ssh_key() {
         return 1
     fi
 
-    # Extract public key
-    if ! dropbearkey -y -f "$key_file" 2>/dev/null | grep "^ssh-rsa" > "$pub_file"; then
+    # Extract public key with router-specific comment
+    local raw_key=$(dropbearkey -y -f "$key_file" 2>/dev/null | grep "^ssh-rsa")
+    if [ -z "$raw_key" ]; then
         print_error "Failed to extract public key"
         rm -f "$key_file"
         return 1
     fi
 
+    # Replace generic comment with router name for identification
+    echo "$raw_key" | sed "s/root@.*$/root@${ROUTER_NAME}/" > "$pub_file"
+
     chmod 600 "$key_file"
-    print_status "Generated SSH key (RSA 2048-bit)"
+    print_status "Generated SSH key (RSA 2048-bit) for $ROUTER_NAME"
+    return 0
+}
+
+# Pre-add Oracle/VPS host key to known_hosts (prevents SSH hanging)
+setup_vps_known_host() {
+    local known_hosts="/root/.ssh/known_hosts"
+
+    # Check if already in known_hosts
+    if grep -q "$VPS_IP" "$known_hosts" 2>/dev/null; then
+        print_debug "VPS already in known_hosts"
+        return 0
+    fi
+
+    print_info "Adding VPS to known_hosts..."
+    mkdir -p /root/.ssh
+
+    # For dropbear, we just need to accept on first connection
+    # The -y flag auto-accepts, but we can also pre-populate
+    # Try to get the host key (requires connectivity)
+    if ping -c 1 -W 2 "$VPS_IP" >/dev/null 2>&1; then
+        # Use ssh-keyscan if available, otherwise rely on -y flag
+        if cmd_exists ssh-keyscan; then
+            ssh-keyscan -p "$VPS_SSH_PORT" "$VPS_IP" >> "$known_hosts" 2>/dev/null
+            print_status "Added VPS host key to known_hosts"
+        else
+            print_debug "ssh-keyscan not available, will auto-accept on first connect"
+        fi
+    else
+        print_debug "VPS not reachable, will auto-accept host key later"
+    fi
+    return 0
+}
+
+# Add Oracle/VPS public key to router for backup access FROM Oracle
+setup_vps_backup_access() {
+    local auth_keys="/etc/dropbear/authorized_keys"
+
+    # Oracle backup key is configured via ORACLE_BACKUP_PUBKEY in config
+    if [ -z "$ORACLE_BACKUP_PUBKEY" ]; then
+        print_debug "ORACLE_BACKUP_PUBKEY not set - skipping VPS backup access"
+        return 0
+    fi
+
+    if grep -q "oracle-backup-access" "$auth_keys" 2>/dev/null; then
+        print_debug "Oracle backup access key already configured"
+        return 0
+    fi
+
+    print_info "Configuring backup access from VPS..."
+    mkdir -p /etc/dropbear
+    echo "$ORACLE_BACKUP_PUBKEY" >> "$auth_keys"
+    chmod 600 "$auth_keys"
+    print_status "VPS backup access configured"
     return 0
 }
 
@@ -869,23 +927,29 @@ configure_ssh_tunnel() {
     print_info "Tunnel: localhost:22 → $VPS_USER@$VPS_IP:$TUNNEL_PORT"
     printf "\n"
 
-    # Step 1: Generate SSH key
+    # Step 1: Generate SSH key (with router-specific comment)
     if ! generate_ssh_key; then
         print_warning "SSH key generation failed - skipping tunnel"
         return 0  # Non-fatal
     fi
 
-    # Step 2: Setup VPS key
+    # Step 2: Pre-add VPS to known_hosts (prevents SSH hanging on first connect)
+    setup_vps_known_host
+
+    # Step 3: Configure backup access FROM VPS to router
+    setup_vps_backup_access
+
+    # Step 4: Setup router key on VPS
     setup_vps_key
 
     if [ "$SKIP_SSH_TUNNEL" = "yes" ]; then
         return 0
     fi
 
-    # Step 3: Create tunnel script
+    # Step 5: Create tunnel script
     create_tunnel_script
 
-    # Step 4: Start tunnel
+    # Step 6: Start tunnel
     start_tunnel
 
     print_status "SSH tunnel configuration complete"

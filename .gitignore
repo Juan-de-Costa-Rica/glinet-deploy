@@ -1,0 +1,17 @@
+# Secrets - never commit these
+config/defaults.conf
+
+# Backup files
+*.backup.*
+*.bak
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
