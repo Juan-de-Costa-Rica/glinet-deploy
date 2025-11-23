@@ -137,7 +137,7 @@ Edit `/usr/bin/reverse-tunnel.sh`:
 #!/bin/sh
 # Maintain reverse SSH tunnel from router to Oracle Cloud VPS
 
-REMOTE_HOST="40.233.66.66"        # Oracle instance IP
+REMOTE_HOST="YOUR-ORACLE-IP"        # Oracle instance IP
 REMOTE_USER="opc"                 # Oracle default user
 REMOTE_SSH_PORT="22"              # SSH port
 TUNNEL_PORT="2210"                # Unique port per router (2210, 2211, 2212...)
@@ -187,7 +187,7 @@ Edit `~/.ssh/config`:
 ```
 # Oracle Cloud Tunnel Server
 Host oracle-tunnel
-    HostName 40.233.66.66
+    HostName YOUR-ORACLE-IP
     User opc
     Port 22
     IdentityFile ~/.ssh/oracle-tunnel
@@ -205,7 +205,7 @@ Host oracle-tunnel
 ssh oracle-tunnel
 
 # Without SSH config
-ssh -i ~/.ssh/oracle-tunnel -o IdentitiesOnly=yes opc@40.233.66.66
+ssh -i ~/.ssh/oracle-tunnel -o IdentitiesOnly=yes opc@YOUR-ORACLE-IP
 ```
 
 ### To Router via Tunnel (Backup Access)
@@ -213,7 +213,7 @@ ssh -i ~/.ssh/oracle-tunnel -o IdentitiesOnly=yes opc@40.233.66.66
 #### Single Command (ProxyJump)
 
 ```bash
-ssh -i ~/.ssh/oracle-tunnel -o IdentitiesOnly=yes -o ProxyCommand="ssh -i ~/.ssh/oracle-tunnel -o IdentitiesOnly=yes -W %h:%p opc@40.233.66.66" root@localhost -p 2210
+ssh -i ~/.ssh/oracle-tunnel -o IdentitiesOnly=yes -o ProxyCommand="ssh -i ~/.ssh/oracle-tunnel -o IdentitiesOnly=yes -W %h:%p opc@YOUR-ORACLE-IP" root@localhost -p 2210
 ```
 
 #### Two-Step Method
@@ -260,7 +260,7 @@ ssh root@localhost -p 2210
 
 ```bash
 # Test the ProxyJump command
-ssh -i ~/.ssh/oracle-tunnel -o IdentitiesOnly=yes -o ProxyCommand="ssh -i ~/.ssh/oracle-tunnel -o IdentitiesOnly=yes -W %h:%p opc@40.233.66.66" root@localhost -p 2210
+ssh -i ~/.ssh/oracle-tunnel -o IdentitiesOnly=yes -o ProxyCommand="ssh -i ~/.ssh/oracle-tunnel -o IdentitiesOnly=yes -W %h:%p opc@YOUR-ORACLE-IP" root@localhost -p 2210
 ```
 
 ---
